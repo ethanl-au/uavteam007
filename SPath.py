@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from random import seed
 import sys
 from math import *
 
@@ -12,6 +13,7 @@ from geometry_msgs.msg import Point, PoseStamped
 from spar_msgs.msg import FlightMotionAction, FlightMotionGoal
 
 
+
 # This is getting a bit more complicated now, so we'll put our information in
 # a class to keep track of all of our variables. This is not so much different
 # to the previous methods, other than the fact that the class will operate
@@ -20,6 +22,7 @@ from spar_msgs.msg import FlightMotionAction, FlightMotionGoal
 # will call it's own functions as callbacks, etc.
 class Guidance():
 	def __init__(self, waypoints):
+		self.Seen_locations = []
 		# Make sure we have a valid waypoint list
 		if not self.check_waypoints(waypoints):
 			raise ArgumentError("Invalid waypoint list input!")
@@ -39,7 +42,8 @@ class Guidance():
 		# Make some space to record down our current location
 		self.current_location = Point()
 		# Set our linear and rotational velocities for the flight
-		self.vel_linear = rospy.get_param("~vel_linear", 0.2)
+		#self.vel_linear = rospy.get_param("~vel_linear", 0.2)
+		self.vel_linear = rospy.get_param("~vel_linear", 0.8)
 		self.vel_yaw = rospy.get_param("~vel_yaw", 0.2)
 		# Set our position and yaw waypoint accuracies
 		self.accuracy_pos = rospy.get_param("~acc_pos", 0.1)
@@ -68,7 +72,8 @@ class Guidance():
 			# XXX: These topics could be hard-coded to avoid using a launch file
 			self.sub_pose = rospy.Subscriber("~pose", PoseStamped, self.callback_pose)
 			# Subscriber to catch "ROI" diversion commands
-			self.sub_roi = rospy.Subscriber("~roi", PoseStamped, self.callback_inspect_roi)
+			#self.sub_roi = rospy.Subscriber("~roi", PoseStamped, self.callback_inspect_roi)
+			self.sub_roi = rospy.Subscriber("roi", PoseStamped, self.callback_inspect_roi)
 
 			# XXX: Could have a publisher to output our waypoint progress
 			# throughout the flight (should publish each time the waypoint
@@ -137,52 +142,56 @@ class Guidance():
 	# This function will fire whenever a ROI pose message is sent
 	# It is also responsible for handling the ROI "inspection task"
 	def callback_inspect_roi(self, msg_in):
-		# Set our flag that we are performing the diversion
-		self.performing_roi = True
+		if not [msg_in.pose.position.x, msg_in.pose.position.y] in self.Seen_locations: 
+			rospy.loginfo(self.Seen_locations)
+			# Set our flag that we are performing the diversion
+			self.performing_roi = True
+			#rospy.loginfo("I am working")
+			rospy.loginfo("Starting diversion to ROI...")
+			# Cancel the current goal (if there is one)
+			self.spar_client.cancel_goal()
+			# Record our current location so we can return to it later
+			start_location = self.current_location
+			# XXX:	It would also be a good idea to capture "current yaw" from
+			#		the pose to maintain that throughout a diversion
 
-		rospy.loginfo("Starting diversion to ROI...")
-		# Cancel the current goal (if there is one)
-		self.spar_client.cancel_goal()
-		# Record our current location so we can return to it later
-		start_location = self.current_location
-		# XXX:	It would also be a good idea to capture "current yaw" from
-		#		the pose to maintain that throughout a diversion
+			# Set the "diversion waypoint" (at yaw zero)
+			dwp = [msg_in.pose.position.x, msg_in.pose.position.y, msg_in.pose.position.z, 0.0]
+			# Set the "return waypoint" (at yaw zero)
+			rwp = [self.current_location.x, self.current_location.y, self.current_location.z, 0.0]
 
-		# Set the "diversion waypoint" (at yaw zero)
-		dwp = [msg_in.pose.position.x, msg_in.pose.position.y, msg_in.pose.position.z, 0.0]
-		# Set the "return waypoint" (at yaw zero)
-		rwp = [self.current_location.x, self.current_location.y, self.current_location.z, 0.0]
+			# XXX: Could pause here for a moment with ( "rospy.sleep(...)" ) to make sure the UAV stops correctly
 
-		# XXX: Could pause here for a moment with ( "rospy.sleep(...)" ) to make sure the UAV stops correctly
+			self.send_wp(dwp)
+			self.spar_client.wait_for_result()
+			if self.spar_client.get_state() != GoalStatus.SUCCEEDED:
+				# Something went wrong, cancel out of guidance!
+				rospy.signal_shutdown("cancelled")
+				return
 
-		self.send_wp(dwp)
-		self.spar_client.wait_for_result()
-		if self.spar_client.get_state() != GoalStatus.SUCCEEDED:
-			# Something went wrong, cancel out of guidance!
-			rospy.signal_shutdown("cancelled")
-			return
+			rospy.loginfo("Reached diversion ROI!")
+			# XXX: Do something?
+			self.Seen_locations.append([dwp[0], dwp[1]])
+			rospy.sleep(rospy.Duration(10))
 
-		rospy.loginfo("Reached diversion ROI!")
-		# XXX: Do something?
-		rospy.sleep(rospy.Duration(10))
+			rospy.loginfo("Returning to flight plan...")
 
-		rospy.loginfo("Returning to flight plan...")
+			self.send_wp(rwp)
+			self.spar_client.wait_for_result()
+			if self.spar_client.get_state() != GoalStatus.SUCCEEDED:
+				# Something went wrong, cancel out of guidance!
+				rospy.signal_shutdown("cancelled")
+				return
 
-		self.send_wp(rwp)
-		self.spar_client.wait_for_result()
-		if self.spar_client.get_state() != GoalStatus.SUCCEEDED:
-			# Something went wrong, cancel out of guidance!
-			rospy.signal_shutdown("cancelled")
-			return
-
-		# "waypoint_counter" represents the "next waypoint"
-		# "waypoint_counter - 1" represents the "current waypoint"
-		rospy.loginfo("Resuming flight plan from waypoint %i!" % (self.waypoint_counter - 1))
-		self.send_wp(self.waypoints[self.waypoint_counter - 1])
-		# Unset our flag that we are performing a diversion
-		# to allow the waypoint timer to take back over
-		self.performing_roi = False
-
+			# "waypoint_counter" represents the "next waypoint"
+			# "waypoint_counter - 1" represents the "current waypoint"
+			rospy.loginfo("Resuming flight plan from waypoint %i!" % (self.waypoint_counter - 1))
+			self.send_wp(self.waypoints[self.waypoint_counter - 1])
+			# Unset our flag that we are performing a diversion
+			# to allow the waypoint timer to take back over
+			self.performing_roi = False
+		else:
+			pass
 
 	# This function is for convinience to simply send out a new waypoint
 	def send_wp(self, wp):
