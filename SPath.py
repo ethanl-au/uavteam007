@@ -70,7 +70,7 @@ class Guidance():
 			# Callback to save "current location" such that we can perform and return
 			# from a diversion to the correct location
 			# XXX: These topics could be hard-coded to avoid using a launch file
-			self.sub_pose = rospy.Subscriber("~pose", PoseStamped, self.callback_pose)
+			self.sub_pose = rospy.Subscriber("/uavasr/pose", PoseStamped, self.callback_pose)
 			# Subscriber to catch "ROI" diversion commands
 			#self.sub_roi = rospy.Subscriber("~roi", PoseStamped, self.callback_inspect_roi)
 			self.sub_roi = rospy.Subscriber("roi", PoseStamped, self.callback_inspect_roi)
@@ -175,14 +175,14 @@ class Guidance():
 			rospy.sleep(rospy.Duration(10))
 
 			rospy.loginfo("Returning to flight plan...")
-
+			rospy.loginfo(self.current_location)
 			self.send_wp(rwp)
 			self.spar_client.wait_for_result()
 			if self.spar_client.get_state() != GoalStatus.SUCCEEDED:
 				# Something went wrong, cancel out of guidance!
 				rospy.signal_shutdown("cancelled")
 				return
-
+			rospy.loginfo("2")
 			# "waypoint_counter" represents the "next waypoint"
 			# "waypoint_counter - 1" represents the "current waypoint"
 			rospy.loginfo("Resuming flight plan from waypoint %i!" % (self.waypoint_counter - 1))
@@ -190,6 +190,7 @@ class Guidance():
 			# Unset our flag that we are performing a diversion
 			# to allow the waypoint timer to take back over
 			self.performing_roi = False
+			rospy.loginfo("3")
 		else:
 			pass
 
