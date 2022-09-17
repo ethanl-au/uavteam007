@@ -3,6 +3,7 @@
 from random import seed
 import sys
 from math import *
+from turtle import distance
 
 import rospy
 import actionlib
@@ -142,7 +143,20 @@ class Guidance():
 	# This function will fire whenever a ROI pose message is sent
 	# It is also responsible for handling the ROI "inspection task"
 	def callback_inspect_roi(self, msg_in):
-		if not [msg_in.pose.position.x, msg_in.pose.position.y] in self.Seen_locations: 
+
+		# Calculate the distance from the new waypoint to each of the existing waypoints in the seen_location array
+		distance_to_seen_locs = []
+		for loc in self.Seen_locations:
+			x_diff = abs(msg_in.pose.position.x - loc[0])
+			y_diff = abs(msg_in.pose.position.y - loc[1])
+
+			#Distance = pythagorian theorem (Hypotense = sqrt( a^2 + b^2))
+			distance_to_seen_locs.append(sqrt(x_diff**2 + y_diff**2))
+
+			#IF none of the distances are less that 10cm, run the code 
+
+		#if not [msg_in.pose.position.x, msg_in.pose.position.y] in self.Seen_locations:
+		if not [inside_boundary for inside_boundary in distance_to_seen_locs if inside_boundary <0.10]: 
 			rospy.loginfo(self.Seen_locations)
 			# Set our flag that we are performing the diversion
 			self.performing_roi = True
