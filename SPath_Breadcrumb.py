@@ -12,7 +12,8 @@ from actionlib_msgs.msg import GoalStatus
 from geometry_msgs.msg import Point, PoseStamped
 
 from spar_msgs.msg import FlightMotionAction, FlightMotionGoal
-
+from breadcrumb.srv import RequestPath
+from breadcrumb.srv import RequestPathRequest
 
 
 # This is getting a bit more complicated now, so we'll put our information in
@@ -24,6 +25,9 @@ from spar_msgs.msg import FlightMotionAction, FlightMotionGoal
 class Guidance():
 	def __init__(self, waypoints):
 		self.Seen_locations = []
+        #initialize the breadcrumb stuff
+		rospy.wait_for_service('/breadcrumb/request_path')
+		self.srvc_bc = rospy.ServiceProxy('/breadcrumb/request_path', RequestPath)
 		# Make sure we have a valid waypoint list
 		if not self.check_waypoints(waypoints):
 			raise ArgumentError("Invalid waypoint list input!")
@@ -63,8 +67,43 @@ class Guidance():
 			# Setup first waypoint segment
 			# XXX:	Another option would be to do "takeoff" and leave "waypoint_counter = 0" to
 			#		begin the mission at the first waypoint after take-off
-			#self.send_takeoff_motion(self.current_location)
-			self.send_wp(self.waypoints[0])
+            
+		for i in range(len(self.waypoints)-1):
+			# Set up a path request for breadcrumb
+			req = RequestPathRequest()
+			req.start.x = self.current_location.x
+			req.start.y = self.current_location.y
+			req.start.z = self.current_location.z
+			req.end.x = self.waypoints[i+1][0]
+			req.end.y = self.waypoints[i+1][1]
+			req.end.z = self.waypoints[i+1][2]
+
+			res = self.srvc_bc(req)
+
+			# Breadcrumb will return a vector of poses if a solution was found
+			# If no solution was found (i.e. no solution, or request bad
+			# start/end), then breadcrumb returns and empty vector
+			# XXX: You could also use res.path_sparse (see breadcrumb docs)
+			if len(res.path.poses) > 0:
+				# Print the path to the screen
+				rospy.loginfo("Segment %i:", i+1)
+				rospy.loginfo("[%0.2f;%0.2f;%0.2f] => [%0.2f;%0.2f;%0.2f]",
+							req.start.x,req.start.y,req.start.z,
+							req.end.x,req.end.y,req.end.z)
+
+				# Loop through the solution returned from breadcrumb
+				for i in range(len(res.path.poses) - 1):
+					rospy.loginfo("    [%0.2f;%0.2f;%0.2f]",
+								res.path.poses[i].position.x,
+								res.path.poses[i].position.y,
+								res.path.poses[i].position.z)
+								#send the wayppoints send_wps(res[i])
+					#The ouptput is 2d so this is the z that i want to fly at			
+					self.send_wp([res.path.poses[i].position.x, res.path.poses[i].position.y, 2.0, 0.0])
+					self.spar_client.wait_for_result()
+			else:
+				rospy.logerr("solution not found")
+
 			self.waypoint_counter += 1
 
 			# Setup a timer to check if our waypoint has completed at 20Hz
@@ -157,7 +196,7 @@ class Guidance():
 			#IF none of the distances are less that 10cm, run the code 
 
 		#if not [msg_in.pose.position.x, msg_in.pose.position.y] in self.Seen_locations:
-		if not [inside_boundary for inside_boundary in distance_to_seen_locs if inside_boundary < 0.10]: 
+		if not [inside_boundary for inside_boundary in distance_to_seen_locs if inside_boundary <0.10]: 
 			rospy.loginfo(self.Seen_locations)
 			# Set our flag that we are performing the diversion
 			self.performing_roi = True
@@ -207,7 +246,6 @@ class Guidance():
 			self.performing_roi = False
 			rospy.loginfo("3")
 		else:
-			rospy.loginfo("coordinate already seen")
 			pass
 
 	# This function is for convinience to simply send out a new waypoint
@@ -315,7 +353,7 @@ class Guidance():
 		# Create our goal
 		goal = FlightMotionGoal()
 		goal.motion = FlightMotionGoal.MOTION_TAKEOFF
-		goal.position.z = rospy.get_param("~height", 2.0)			# Other position information is ignored
+		goal.position.z = rospy.get_param("~height", 1.0)			# Other position information is ignored
 		goal.velocity_vertical = rospy.get_param("~speed", 0.2)		# Other velocity information is ignored
 		goal.wait_for_convergence = True							# Wait for our takeoff "waypoint" to be reached
 		goal.position_radius = rospy.get_param("~position_radius", 0.1)
@@ -360,16 +398,16 @@ def main(args):
 	# [X, Y, Z, Yaw]
 	wps = [[-1.0, -1.0, 2.0, 0.0],
 		   [-3.0,-2.0, 2.0, 0.0],
-		   [-3.0, 2.0, 2.0, 1.5],
+		   [-3.0, 2.0, 2.0, 0.0],
 		   [-1.0, 2.0, 2.0, 0.0],
-		   [-1.0,-2.0, 2.0, -1.5],
+		   [-1.0,-2.0, 2.0, 0.0],
 		   [ 1.0,-2.0, 2.0, 0.0],
-		   [ 1.0, 2.0, 2.0, 1.5],
-           [ 3.0, 2.0, 2.0, 0.0],
-           [ 3.0, -2.0, 2.0, -1.5]]
+		   [ 1.0, 2.0, 2.0, 0.0],
+           [ 3.0, -2.0, 2.0, 0.0],
+           [ 3.0, 2.0, 2.0, 0.0]]
 	# Create our guidance class option
 	guide = Guidance(wps)
-	#guide.send_landing_motion()
+
 	# Spin!
 	rospy.spin()
 
