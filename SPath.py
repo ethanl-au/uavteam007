@@ -63,7 +63,7 @@ class Guidance():
 			# Setup first waypoint segment
 			# XXX:	Another option would be to do "takeoff" and leave "waypoint_counter = 0" to
 			#		begin the mission at the first waypoint after take-off
-			#self.send_takeoff_motion(self.current_location)
+			self.send_takeoff_motion(self.spar_client)
 			self.send_wp(self.waypoints[0])
 			self.waypoint_counter += 1
 
@@ -273,7 +273,7 @@ class Guidance():
 				rospy.loginfo("Mission cancelled!")
 				rospy.signal_shutdown("cancelled")
 
-	def send_landing_motion(spar_client):
+	def send_landing_motion(self, spar_client):
 		# Create our goal
 		goal = FlightMotionGoal()
 		goal.motion = FlightMotionGoal.MOTION_LAND
@@ -310,7 +310,7 @@ class Guidance():
 				else:
 					rospy.logerr("Error: An unknown goal status was recieved")
 
-	def send_takeoff_motion(spar_client):
+	def send_takeoff_motion(self, spar_client):
 		# Create our goal
 		goal = FlightMotionGoal()
 		goal.motion = FlightMotionGoal.MOTION_TAKEOFF
