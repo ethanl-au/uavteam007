@@ -207,7 +207,6 @@ class Guidance():
 			self.performing_roi = False
 			rospy.loginfo("3")
 		else:
-			rospy.loginfo("coordinate already seen")
 			pass
 
 	# This function is for convinience to simply send out a new waypoint
