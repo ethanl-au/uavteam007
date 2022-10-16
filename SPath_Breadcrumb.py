@@ -99,7 +99,7 @@ class Guidance():
 		self.current_location = Point()
 
 		# Set our linear and rotational velocities for the flight
-		self.vel_linear = rospy.get_param("~vel_linear", 0.4)
+		self.vel_linear = rospy.get_param("~vel_linear", 0.6)
 		self.vel_yaw = rospy.get_param("~vel_yaw", 0.2)
 		# Set our position and yaw waypoint accuracies
 		self.accuracy_pos = rospy.get_param("~acc_pos", 0.3)
@@ -433,13 +433,13 @@ class Guidance():
 							req.end.z = self.waypoints[self.next_waypoint_index ][2]    #Get the next breadcrumb Z in the list
 
 							res = self.srvc_bc(req)
+							breadcrumbWPS = []
 
 							# Breadcrumb will return a vector of poses if a solution was found
 							# If no solution was found (i.e. no solution, or request bad
 							# start/end), then breadcrumb returns and empty vector
 							# XXX: You could also use res.path_sparse (see breadcrumb docs)
 							if self.battery_percentage >= 0.10:
-								breadcrumbWPS = []
 								if len(res.path_sparse.poses) > 0:
 									# Print the path to the screen
 									rospy.loginfo("Segment {} to {}:".format(self.next_waypoint_index -1, self.next_waypoint_index))
@@ -453,7 +453,7 @@ class Guidance():
 													res.path_sparse.poses[i].position.x,
 													res.path_sparse.poses[i].position.y,
 													res.path_sparse.poses[i].position.z)
-										breadcrumbWPS.append([res.path_sparse.poses[i].position.x, res.path_sparse.poses[i].position.y, self.searchAltitude, self.current_yaw])		
+										breadcrumbWPS.append([res.path_sparse.poses[i].position.x, res.path_sparse.poses[i].position.y, self.searchAltitude, self.waypoints[self.next_waypoint_index ][3]])		
 
 									#Display the Path
 									# print(breadcrumbWPS)
@@ -465,8 +465,10 @@ class Guidance():
 									self.breadcrumb_WPSnextIndex +=1
 
 								else:
-									#breadcrumbWPS.append([res.path_sparse.poses[i].position.x, res.path_sparse.poses[i].position.y, self.searchAltitude, 0.0])
-									rospy.logerr("solution not found")	
+									# i = self.next_waypoint_index
+									self.send_wp(self.waypoints[self.next_waypoint_index ])
+									self.next_waypoint_index +=1
+									# rospy.logerr("solution not found")	
 							else:
 								rospy.loginfo("Initiating safe landing due to low battery")
 								self.safeLanding()							
@@ -748,23 +750,39 @@ def main(args):
 
 	# List of waypoints
 	# [X, Y, Z, Yaw]
-	wps = [[-3.0,-2.5, searchAltitude, 0.0],
-		   [-3.0, 2.5, searchAltitude, 1.5],
-		   [-1.0, 2.5, searchAltitude, 0.0],
-		   [-1.0,-2.5, searchAltitude, -1.5],
-		   [ 1.0,-2.5, searchAltitude, 0.0],
-		   [ 1.0, 2.5, searchAltitude, 1.5],
-          [ 3.0, 2.5, searchAltitude, 0.0],
-          [ 3.0, -2.5, searchAltitude, -1.5],
-          [ 1.0, -2.5, searchAltitude, 1.5],
-          [ 1.0, 2.5, searchAltitude, -1.5],]
+	# wps = [[-3.0,-2.5, searchAltitude, 0.0],
+	# 	   [-3.0, 2.5, searchAltitude, 1.5],
+	# 	   [-1.0, 2.5, searchAltitude, 0.0],
+	# 	   [-1.0,-2.5, searchAltitude, -1.5],
+	# 	   [ 1.0,-2.5, searchAltitude, 0.0],
+	# 	   [ 1.0, 2.5, searchAltitude, 1.5],
+    #       [ 3.0, 2.5, searchAltitude, 0.0],
+    #       [ 3.0, -2.5, searchAltitude, -1.5],
+    #       [ 1.0, -2.5, searchAltitude, 1.5],
+    #       [ 1.0, 2.5, searchAltitude, -1.5],]
 
-# #		   [ 1.0, 2.0, 2.0, 1.5],
-# 		   [-1.0, 2.0, 2.0, 0.0],
-# 		   [-1.0,-1.0, 2.0, -1.5],
-# 		   [ 1.8,-1.0, 2.0, 0.0],
-# 		   [ 1.8, 1.0, 2.0, 1.5],
-#            [ 0.0, 0.0, 2.0, 0.0]]
+	wps = [[-3.0,-2.5, searchAltitude, 0.0],
+			[-3.0,-2.5, searchAltitude, 1.5],
+		   [-3.0, 2.5, searchAltitude, 1.5],
+		   [-3.0, 2.5, searchAltitude, 0.0],
+		   [-1.0, 2.5, searchAltitude, 0.0],
+		   [-1.0, 2.5, searchAltitude, -1.5],
+		   [-1.0,-2.5, searchAltitude, -1.5],
+		   [-1.0,-2.5, searchAltitude, 0.0],
+		   [ 1.0,-2.5, searchAltitude, 0.0],
+		   [ 1.0,-2.5, searchAltitude, 1.5],
+		   [ 1.0, 2.5, searchAltitude, 1.5],
+		   [ 1.0, 2.5, searchAltitude, 0.0],
+          [ 3.0, 2.5, searchAltitude, 0.0],
+		  [ 3.0, 2.5, searchAltitude, -1.5],
+          [ 3.0, -2.5, searchAltitude, -1.5],
+		  [ 3.0, -2.5, searchAltitude, -3.14],
+          [ 1.0, -2.5, searchAltitude, -3.14],
+		  [ 1.0, -2.5, searchAltitude, 1.5],
+          [ 1.0, 2.5, searchAltitude, 1.5],]
+
+
+
 	# Create our guidance class option
 	guide = Guidance(wps)
 	#guide.send_landing_motion()

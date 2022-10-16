@@ -4,6 +4,8 @@
 		<!-- Linear and yaw motion velocities -->
 		<param name="vel_linear" type="double" value="0.4" />
 		<param name="vel_yaw" type="double" value="0.2" />
+		<param name="speed" type="double" value="0.2" />
+
 
 		<!-- Position and yaw waypoint accuracies -->
 		<param name="acc_pos" type="double" value="0.3" />
